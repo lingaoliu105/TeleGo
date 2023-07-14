@@ -67,8 +67,7 @@ func (s *Server) Handle(conn net.Conn) {
 				return
 			}
 			msg := string(buf[:n-1]) //eliminate tailing \n
-			user.DoMessage(msg)
-
+			user.ProcessMessage(msg)
 		}
 	}()
 

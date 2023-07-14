@@ -1,6 +1,9 @@
 package main
 
-import "net"
+import (
+	"fmt"
+	"net"
+)
 
 type User struct {
 	Name string
@@ -25,6 +28,7 @@ func NewUser(conn net.Conn, server *Server) *User {
 	return user
 }
 
+// messages from server via channel
 func (u *User) ListenMessage() {
 	for {
 		msg := <-u.C
@@ -55,6 +59,33 @@ func (u *User) Offline() {
 	u.server.Broadcast(u, "下线\n")
 }
 
-func (u *User) DoMessage(msg string) {
+func (u *User) GetLock() {
+	u.server.mapLock.Lock()
+}
+
+func (u *User) ReleaseLock() {
+	u.server.mapLock.Unlock()
+}
+
+func (u *User) Send(message string) {
+	_, err := u.conn.Write([]byte(message))
+	if err != nil {
+		fmt.Println("error writing to client")
+		return
+	}
+}
+
+// process incoming messages from this user
+func (u *User) ProcessMessage(msg string) {
+
+	//query online users
+	if msg == "who" {
+		u.GetLock()
+		for _, onlineUser := range u.server.OnlineMap {
+			reply := "[" + onlineUser.Addr + "]" + onlineUser.Name + ": 在线\n"
+			u.Send(reply)
+		}
+		u.ReleaseLock()
+	}
 	u.server.Broadcast(u, msg)
 }
