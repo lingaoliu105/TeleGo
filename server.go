@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"net"
 	"sync"
 )
@@ -42,7 +43,6 @@ func (s *Server) ListenMessages() {
 
 		s.mapLock.Lock()
 		for _, client := range s.OnlineMap {
-			fmt.Println(msg)
 			client.C <- msg
 		}
 		s.mapLock.Unlock()
@@ -51,30 +51,23 @@ func (s *Server) ListenMessages() {
 
 func (s *Server) Handle(conn net.Conn) {
 	fmt.Println("connection established")
-	user := NewUser(conn)
-	//user joined, add to online map
-	s.mapLock.Lock()
-	s.OnlineMap[user.Name] = user
-	s.mapLock.Unlock()
-
-	//broadcast new user's info
-	s.Broadcast(user, "已上线\n")
-
+	user := NewUser(conn, s)
+	user.Online()
 	//receive message from client
 	go func() {
 		buf := make([]byte, 8192)
 		for {
 			n, err := conn.Read(buf)
 			if n == 0 {
-				s.Broadcast(user, "下线")
+				user.Offline()
 				return
 			}
-			if err != nil {
+			if err != nil && err != io.EOF {
 				fmt.Println("read error: ", err)
 				return
 			}
 			msg := string(buf[:n-1]) //eliminate tailing \n
-			s.Broadcast(user, msg)
+			user.DoMessage(msg)
 
 		}
 	}()
