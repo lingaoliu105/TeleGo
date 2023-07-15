@@ -86,7 +86,7 @@ func (s *Server) Handle(conn net.Conn) {
 		//handle force quitting for inactive users
 		case <-isAlive:
 			//do nothing
-		case <-time.After(time.Second * 10):
+		case <-time.After(time.Second * 600):
 			user.Dismiss()
 			runtime.Goexit() //or simply return
 		}
