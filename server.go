@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"runtime"
 	"sync"
+	"time"
 )
 
 type Server struct {
@@ -16,16 +18,16 @@ type Server struct {
 	mapLock   sync.RWMutex
 
 	//broadcasting channel
-	Message chan string
+	BroadcastC chan string
 }
 
 // create a server
 func NewServer(ip string, port int) *Server {
 	serverPtr := &Server{
-		Ip:        ip,
-		Port:      port, //note struct creation syntax
-		OnlineMap: make(map[string]*User),
-		Message:   make(chan string),
+		Ip:         ip,
+		Port:       port, //note struct creation syntax
+		OnlineMap:  make(map[string]*User),
+		BroadcastC: make(chan string),
 	}
 	return serverPtr
 }
@@ -33,13 +35,13 @@ func NewServer(ip string, port int) *Server {
 func (s *Server) Broadcast(user *User, msg string) {
 	bcMsg := "[" + user.Addr + "]" + user.Name + ":" + msg
 
-	s.Message <- bcMsg //pass message to broadcasting channel, which is being listened by the func below
+	s.BroadcastC <- bcMsg //pass message to broadcasting channel, which is being listened by the func below
 }
 
 // listen to broadcasting channel,if there's message, forward to all users
 func (s *Server) ListenMessages() {
 	for {
-		msg := <-s.Message
+		msg := <-s.BroadcastC
 
 		s.mapLock.Lock()
 		for _, client := range s.OnlineMap {
@@ -53,6 +55,10 @@ func (s *Server) Handle(conn net.Conn) {
 	fmt.Println("connection established")
 	user := NewUser(conn, s)
 	user.Online()
+
+	//channel monitoring whether user is active
+	isAlive := make(chan bool)
+
 	//receive message from client
 	go func() {
 		buf := make([]byte, 8192)
@@ -68,12 +74,23 @@ func (s *Server) Handle(conn net.Conn) {
 			}
 			msg := string(buf[:n-1]) //eliminate tailing \n
 			user.ProcessMessage(msg)
+
+			//signal user is alive
+			isAlive <- true
 		}
 	}()
 
 	//current handler blocks
-
-	select {}
+	for {
+		select {
+		//handle force quitting for inactive users
+		case <-isAlive:
+			//do nothing
+		case <-time.After(time.Second * 10):
+			user.Dismiss()
+			runtime.Goexit() //or simply return
+		}
+	}
 }
 
 // start server
@@ -91,7 +108,7 @@ func (s *Server) Start() {
 		}
 	}(listener) //defer closing in case forget
 
-	//start goroutine for listening Message
+	//start goroutine for listening BroadcastC
 	go s.ListenMessages()
 	for {
 		//accept

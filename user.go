@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net"
+	"strings"
 )
 
 type User struct {
@@ -32,10 +33,7 @@ func NewUser(conn net.Conn, server *Server) *User {
 func (u *User) ListenMessage() {
 	for {
 		msg := <-u.C
-		_, err := u.conn.Write([]byte(msg + "\n"))
-		if err != nil {
-			return
-		}
+		u.Send(msg)
 	}
 }
 
@@ -68,6 +66,9 @@ func (u *User) ReleaseLock() {
 }
 
 func (u *User) Send(message string) {
+	if message[len(message)-1] != '\n' {
+		message = message + "\n"
+	}
 	_, err := u.conn.Write([]byte(message))
 	if err != nil {
 		fmt.Println("error writing to client")
@@ -77,7 +78,6 @@ func (u *User) Send(message string) {
 
 // process incoming messages from this user
 func (u *User) ProcessMessage(msg string) {
-
 	//query online users
 	if msg == "who" {
 		u.GetLock()
@@ -86,6 +86,40 @@ func (u *User) ProcessMessage(msg string) {
 			u.Send(reply)
 		}
 		u.ReleaseLock()
+	} else if len(msg) > 7 && msg[:7] == "rename|" { //rename request
+		newName := strings.Split(msg, "|")[1]
+
+		//check if name is available
+		u.GetLock()
+		_, ok := u.server.OnlineMap[newName]
+		if ok {
+			u.Send("name is not available")
+			u.ReleaseLock()
+		} else {
+			u.server.OnlineMap[newName] = u
+			delete(u.server.OnlineMap, u.Name)
+			u.ReleaseLock()
+			u.Name = newName
+			u.Send("成功更名为：" + newName)
+		}
+	} else { //normal messages, broadcast to all clients
+		u.server.Broadcast(u, msg)
 	}
-	u.server.Broadcast(u, msg)
+}
+
+func (u *User) Dismiss() {
+	close(u.C)
+	_, err2 := u.conn.Write([]byte("您已下线\n"))
+	if err2 != nil {
+		fmt.Println(err2)
+		return
+	}
+	err := u.conn.Close()
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	u.GetLock()
+	delete(u.server.OnlineMap, u.Name)
+	u.ReleaseLock()
 }
