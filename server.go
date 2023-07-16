@@ -72,7 +72,10 @@ func (s *Server) Handle(conn net.Conn) {
 				fmt.Println("read error: ", err)
 				return
 			}
-			msg := string(buf[:n-1]) //eliminate tailing \n
+			msg := string(buf[:n]) //eliminate tailing \n
+			if msg[len(msg)-1] == '\n' {
+				msg = msg[:len(msg)-1]
+			}
 			user.ProcessMessage(msg)
 
 			//signal user is alive
@@ -121,6 +124,4 @@ func (s *Server) Start() {
 		//do handler
 		go s.Handle(conn)
 	}
-
-	//close socket
 }

@@ -66,12 +66,12 @@ func (u *User) ReleaseLock() {
 }
 
 func (u *User) Send(message string) {
-	if message[len(message)-1] != '\n' {
+	if len(message) > 1 && message[len(message)-1] != '\n' {
 		message = message + "\n"
 	}
 	_, err := u.conn.Write([]byte(message))
 	if err != nil {
-		fmt.Println("error writing to client")
+		fmt.Println("error writing to client", err)
 		return
 	}
 }
